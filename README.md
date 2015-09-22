@@ -6,8 +6,8 @@ for now there isn`t something much more sophisticated.
 
 for testing : 
   ```
-  sudo ./scripts/set-queue.js
-  sudo ./scripts/set-works.js
+  sudo ./scripts/set-queue.sh
+  sudo ./scripts/set-works.sh
   firefox localhost:8000
   ```
   
