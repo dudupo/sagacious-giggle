@@ -1,5 +1,5 @@
 #!/usr/bin/nodejs
-var n = 10;
+var n = 1000;
 msg = (Math.floor(Math.random()*n*100)).toString()
 for (var i = 0; i < n; i++){
 	msg += " " +(Math.floor(Math.random()*n*100)).toString();

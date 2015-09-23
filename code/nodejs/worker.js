@@ -57,16 +57,27 @@ function heapsort(array){
 	}
 	return sortedarray;
 }
-function write_log(data){
+function writeLog(fs , data){
 	data = ">>> "  + data +"\n";
-	var path = './data/log.inc';
-	fs = require('fs');
+	var path = './data/log.txt';
 	fs.appendFile(path, data ,function (error) {
 		if (error) return console.log(error);
 	});
 }
-function server_init(){
-	var path = './data/log.inc';
+function insertPacket(client, queueName, message, executionTime){
+	client.bulk({
+			body: [
+			{index : {_index:'queue-monitor' , _type:'packet'}},
+			{"queue-name" : queueName ,"message" : message,"execution-time" : executionTime}]
+		},function(error , respone) {
+			if (error){
+				console.log(error);
+			} 
+		}
+	);
+}
+function serverInit(fs){
+	var path = './data/log.txt';
 	var suffix ="<html>\n"+
 								"<head>\n"+
 								"<script>\n"+
@@ -90,7 +101,6 @@ function server_init(){
 									"<pre id='datalist' style='font-family:consolas;width:40%;float:left;font-size:12px'>\n"
 	var preffix = "</pre>\n</div>\n</body>\n</html>"
 	var http  = require("http"); 
-	var fs 	  = require('fs');
 	var url	  = require('url');
 	var content = "";
 	fs.watchFile(path , function (curr, prev) {
@@ -113,29 +123,41 @@ function server_init(){
 		response.end();
  	}).listen(8000);
 }
-
+function stringToArray(str){
+	var numbers = str.split(' ');
+	var array = [];
+	for(var i = 0; i < numbers.length; i++){
+		array.push(parseInt(numbers[i]));
+	}
+	return array;
+}
+function monitoringData(client, fs, msg, array, sortedarray, executionTime){
+	insertPacket(client , msg.properties.replyTo , array.toString());
+	insertPacket(client , msg.properties.replyTo , sortedarray.toString(),executionTime);
+	writeLog(fs ,msg.properties.replyTo + " : " + array);
+	writeLog(fs ,msg.properties.replyTo + " : " + sortedarray);	
+}
 /------------- Main ------------------/
-
+var elasticsearch = require('elasticsearch');
+var client = new elasticsearch.Client({
+	host: 'localhost:9200'
+});
 var amqp = require('amqplib/callback_api');
+var fs = require('fs');
 amqp.connect('amqp://localhost' , function(error , connection) {
 	if (connection){
 		connection.createChannel(function(error , channel) {
-			var queuename = 'sendinput';
+			var queueName = 'sendinput';
 			var sortedarray;
-
-			channel.assertQueue(queuename , {durable : false});
-			console.log(" [*] Waiting for messages");
-			channel.consume(queuename , function(msg){
-				
-				var array = [];
-				var numbers = msg.content.toString().split(' ');
-				for(var i = 0; i < numbers.length; i++){
-					array.push(parseInt(numbers[i]));
-				}
+			channel.assertQueue(queueName , {durable : false});
+			channel.consume(queueName , function(msg){
+				var array = stringToArray(msg.content.toString());
+				var time = new Date();
 				sortedarray = heapsort(array);
 				if (sortedarray){
-					write_log(msg.properties.replyTo + " : " + array);
-					write_log(msg.properties.replyTo + " : " + sortedarray);	
+					var executionTime = new Date().getTime() - time.getTime();
+					console.log("task run  : " + executionTime + " milliseconds");
+					monitoringData(client, fs, msg, array, sortedarray, executionTime);
 					channel.sendToQueue(msg.properties.replyTo,
 					 new Buffer(sortedarray.toString()), {persistent: true ,
 					 	correlationId: msg.properties.correlationId});
@@ -147,4 +169,4 @@ amqp.connect('amqp://localhost' , function(error , connection) {
 		console.log(error);
 	}
 });
-server_init();
+serverInit(fs);
